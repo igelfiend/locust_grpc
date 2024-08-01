@@ -1,0 +1,6 @@
+grpcio
+grpcio-tools
+grpc-interceptor
+faker
+locust
+python-dotenv

@@ -1,0 +1,5 @@
+venvs
+*.csv
+proto_cyrex/*
+*.pyc
+.env
