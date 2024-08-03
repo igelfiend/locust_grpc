@@ -106,7 +106,7 @@ class ObserverUser(GrpcUser):
         vacancies = vacancy_service.GetVacancies(
             GetVacanciesRequest(
                 page=1,
-                limit=100,
+                limit=10_000_000,
             ),
             timeout=45,
         )
