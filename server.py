@@ -8,12 +8,23 @@ sys.path.append("./proto_cyrex")
 
 import grpc
 from google.protobuf import timestamp_pb2
+from proto_cyrex.rpc_create_vacancy_pb2 import CreateVacancyRequest
+from proto_cyrex.rpc_signin_user_pb2 import SignInUserInput, SignInUserResponse
+from proto_cyrex.rpc_update_vacancy_pb2 import UpdateVacancyRequest
 from proto_cyrex.vacancy_service_pb2_grpc import (
     VacancyServiceServicer,
     add_VacancyServiceServicer_to_server,
 )
+from proto_cyrex.auth_service_pb2_grpc import (
+    AuthServiceServicer,
+    add_AuthServiceServicer_to_server,
+)
 from proto_cyrex.vacancy_pb2 import VacancyResponse, Vacancy
-from proto_cyrex.vacancy_service_pb2 import VacancyRequest, GetVacanciesRequest
+from proto_cyrex.vacancy_service_pb2 import (
+    DeleteVacancyResponse,
+    VacancyRequest,
+    GetVacanciesRequest,
+)
 
 
 division_choices = (
@@ -22,6 +33,17 @@ division_choices = (
     Vacancy.DIVISION.SALES,
     Vacancy.DIVISION.OTHER,
 )
+
+
+class AuthService(AuthServiceServicer):
+    async def SignInUser(self, request: SignInUserInput, context):
+        """As a mock we just simulate successfull login"""
+        token = uuid.uuid4()
+        return SignInUserResponse(
+            status="success",
+            access_token=str(token),
+            refresh_token=str(token),
+        )
 
 
 class LocalVacancyServer(VacancyServiceServicer):
@@ -64,13 +86,85 @@ class LocalVacancyServer(VacancyServiceServicer):
         for vacancy in self.vacancies[start:end]:
             yield vacancy
 
-    async def GetVacancy(self, request: VacancyRequest, context):
-        return VacancyResponse(vacancy=self.vacancies[0])
+    async def GetVacancy(
+        self,
+        request: VacancyRequest,
+        context: grpc.ServicerContext,
+    ):
+        try:
+            vacancy = next(v for v in self.vacancies if v.Id == request.Id)
+            return VacancyResponse(vacancy=vacancy)
+        except StopIteration:
+            context.abort(
+                code=grpc.StatusCode.NOT_FOUND,
+                details=f"Vacancy with Id {request.Id} not found",
+            )
+
+    async def CreateVacancy(
+        self,
+        request: CreateVacancyRequest,
+        context: grpc.ServicerContext,
+    ):
+        try:
+            vacancy = next(v for v in self.vacancies if v.Id == request.Title)
+            context.abort(
+                code=grpc.StatusCode.ALREADY_EXISTS,
+                details=f"post with that title already exists",
+            )
+        except StopIteration:
+            new_vacancy = Vacancy(
+                Id=str(uuid.uuid4()),
+                Title=request.Title,
+                Description=request.Description,
+                Views=0,
+                Division=request.Division,
+                Country=request.Country,
+                created_at=timestamp_pb2.Timestamp().GetCurrentTime(),
+                updated_at=timestamp_pb2.Timestamp().GetCurrentTime(),
+            )
+            self.vacancies.append(new_vacancy)
+            return VacancyResponse(vacancy=new_vacancy)
+
+    async def UpdateVacancy(
+        self,
+        request: UpdateVacancyRequest,
+        context: grpc.ServicerContext,
+    ):
+        try:
+            vacancy = next(v for v in self.vacancies if v.Id == request.Id)
+            vacancy.Title = request.Title
+            vacancy.Description = request.Description
+            vacancy.Views = request.Views
+            vacancy.Division = request.Division
+            vacancy.Country = request.Country
+            vacancy.updated_at.GetCurrentTime()
+            return VacancyResponse(vacancy=vacancy)
+        except StopIteration:
+            context.abort(
+                code=grpc.StatusCode.NOT_FOUND,
+                details=f"Vacancy with Id {request.Id} not found",
+            )
+
+    async def DeleteVacancy(
+        self,
+        request: VacancyRequest,
+        context: grpc.ServicerContext,
+    ):
+        try:
+            vacancy = next(v for v in self.vacancies if v.Id == request.Id)
+            self.vacancies.remove(vacancy)
+        except StopIteration:
+            context.abort(
+                code=grpc.StatusCode.NOT_FOUND,
+                details=f"Vacancy with Id {request.Id} not found",
+            )
+        return DeleteVacancyResponse(success=True)
 
 
 async def serve():
     server = grpc.aio.server()
     add_VacancyServiceServicer_to_server(LocalVacancyServer(), server)
+    add_AuthServiceServicer_to_server(AuthService(), server)
     listen_addr = "[::]:50051"
     server.add_insecure_port(listen_addr)
     logging.info("Starting server on %s", listen_addr)
