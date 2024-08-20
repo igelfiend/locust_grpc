@@ -32,7 +32,7 @@ class LocalVacancyServer(VacancyServiceServicer):
     If wish to use in development then comment not implemented methods in locustfile
     """
 
-    vacancies_countt = 1_000
+    vacancies_count = 1_000
 
     def __init__(self):
         logging.info(f"Initiating server with {self.vacancies_count} dummy vacancies")
