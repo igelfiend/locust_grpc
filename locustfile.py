@@ -39,7 +39,7 @@ class BaseUser(GrpcUser):
     user_id = 0
 
     def on_start(self) -> None:
-        self.user_id = self.user_id
+        self.user_id = self._user_id
         self._user_id += 1
         if USER_CREDENTIALS:
             email, password = USER_CREDENTIALS[self.user_id % len(USER_CREDENTIALS)]
