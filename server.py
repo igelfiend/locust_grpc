@@ -48,10 +48,8 @@ class AuthService(AuthServiceServicer):
 
 class LocalVacancyServer(VacancyServiceServicer):
     """
-    This server is only for test purposes.
-    Declared only GetVacancy and GetVacancies as most simple and most complex methods.
-    Feel free to extend with other methods.
-    If wish to use in development then comment not implemented methods in locustfile
+    Server to run on local machine.
+    Initiates with 1000 random vacancies.
     """
 
     vacancies_count = 1_000
