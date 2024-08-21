@@ -8,6 +8,8 @@ sys.path.append("./proto_cyrex")
 
 import grpc
 from google.protobuf import timestamp_pb2
+
+from creds_load import load_credentials
 from proto_cyrex.rpc_create_vacancy_pb2 import CreateVacancyRequest
 from proto_cyrex.rpc_signin_user_pb2 import SignInUserInput, SignInUserResponse
 from proto_cyrex.rpc_update_vacancy_pb2 import UpdateVacancyRequest
@@ -35,15 +37,53 @@ division_choices = (
 )
 
 
+users = {}
+
+
+def token_validator(token: str):
+    token_parts = token.split()
+    if (len(token_parts) != 2) or (token_parts[0].lower() != "bearer"):
+        return False
+
+    return token_parts[1] in users
+
+
+class AuthInterceptor(grpc.aio.ServerInterceptor):
+    def __init__(self, token_validator):
+        self.token_validator = token_validator
+
+    async def intercept_service(
+        self, continuation, handler_call_details: grpc.HandlerCallDetails
+    ):
+        metadata = dict(handler_call_details.invocation_metadata)
+        token = metadata.get("authorization")
+
+        method_name = handler_call_details.method.split("/")[-1]
+        if token or method_name not in {"SignInUser", "SignUpUser"}:
+            if not self.token_validator(token):
+                raise grpc.RpcError(
+                    grpc.StatusCode.UNAUTHENTICATED,
+                    "Invalid or missing token",
+                )
+
+        return await continuation(handler_call_details)
+
+
 class AuthService(AuthServiceServicer):
-    async def SignInUser(self, request: SignInUserInput, context):
+    async def SignInUser(self, request: SignInUserInput, context: grpc.ServicerContext):
         """As a mock we just simulate successfull login"""
-        token = uuid.uuid4()
-        return SignInUserResponse(
-            status="success",
-            access_token=str(token),
-            refresh_token=str(token),
-        )
+        try:
+            token = next(k for k, v in users.items() if v == request.email)
+            return SignInUserResponse(
+                status="success",
+                access_token=str(token),
+                refresh_token=str(token),
+            )
+        except StopIteration:
+            context.abort(
+                code=grpc.StatusCode.NOT_FOUND,
+                detail="User not found",
+            )
 
 
 class LocalVacancyServer(VacancyServiceServicer):
@@ -160,11 +200,21 @@ class LocalVacancyServer(VacancyServiceServicer):
 
 
 async def serve():
-    server = grpc.aio.server()
+    creds = load_credentials()
+
+    global users
+    # saving dict with token - user info
+    users = {str(uuid.uuid4()): cred[0] for cred in creds}
+    logging.info(f"Users loaded: {len(creds)}")
+
+    server = grpc.aio.server(interceptors=[AuthInterceptor(token_validator)])
+
     add_VacancyServiceServicer_to_server(LocalVacancyServer(), server)
     add_AuthServiceServicer_to_server(AuthService(), server)
+
     listen_addr = "[::]:50051"
     server.add_insecure_port(listen_addr)
+
     logging.info("Starting server on %s", listen_addr)
 
     await server.start()

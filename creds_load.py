@@ -8,7 +8,7 @@ load_dotenv()
 class ConfigurationError(Exception): ...
 
 
-def load_credentials():
+def load_credentials() -> list[tuple[str]]:
     """
     It's possible to use up to 9 users (for now)
     You have to store your creds like

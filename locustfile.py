@@ -60,6 +60,9 @@ class BaseUser(GrpcUser):
             raise LocustError("Credentials are not provided")
         return super().on_start()
 
+    def _get_metadata_for_auth(self):
+        return (("authorization", f"Bearer {self.token}"),)
+
 
 class HardworkingUser(BaseUser):
     wait_time = constant_pacing(30)
@@ -76,6 +79,7 @@ class HardworkingUser(BaseUser):
                 Country=faker.country_code(),
             ),
             timeout=10,
+            metadata=self._get_metadata_for_auth(),
         )
         vacancy = create_vacancy_response.vacancy
 
@@ -90,13 +94,22 @@ class HardworkingUser(BaseUser):
                     Views=faker.pyint(),
                 ),
                 timeout=10,
+                metadata=self._get_metadata_for_auth(),
             )
-            vacancy_service.GetVacancy(VacancyRequest(Id=vacancy.Id), timeout=10)
+            vacancy_service.GetVacancy(
+                VacancyRequest(Id=vacancy.Id),
+                timeout=10,
+                metadata=self._get_metadata_for_auth(),
+            )
         finally:
-            vacancy_service.DeleteVacancy(VacancyRequest(Id=vacancy.Id), timeout=10)
+            vacancy_service.DeleteVacancy(
+                VacancyRequest(Id=vacancy.Id),
+                timeout=10,
+                metadata=self._get_metadata_for_auth(),
+            )
 
 
-class ObserverUser(GrpcUser):
+class ObserverUser(BaseUser):
     wait_time = constant_pacing(45)
 
     @task
@@ -109,6 +122,7 @@ class ObserverUser(GrpcUser):
                 limit=10_000_000,
             ),
             timeout=45,
+            metadata=self._get_metadata_for_auth(),
         )
 
         v_plain = [v for v in vacancies]
